@@ -52,6 +52,11 @@ func CourseChatPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.Handler
 		// Add user message
 		messages = append(messages, Message{Role: "user", Content: req.Message})
 
+		// Only send last 6 messages to keep context small
+		if len(messages) > 6 {
+			messages = messages[len(messages)-6:]
+		}
+
 		// Build API messages with system prompt
 		apiMessages := []Message{{Role: "system", Content: SystemPromptClarify}}
 		apiMessages = append(apiMessages, messages...)

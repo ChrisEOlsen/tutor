@@ -16,11 +16,17 @@ type Message struct {
 	Content string `json:"content"`
 }
 
+// OpenRouterProvider is the provider routing object for OpenRouter.
+type OpenRouterProvider struct {
+	Only []string `json:"only"`
+}
+
 // OpenRouterRequest is the request body for OpenRouter's chat completions.
 type OpenRouterRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature"`
+	Model       string           `json:"model"`
+	Messages    []Message        `json:"messages"`
+	Temperature float64          `json:"temperature"`
+	Provider    OpenRouterProvider `json:"provider"`
 }
 
 // OpenRouterChoice represents a choice in the response.
@@ -101,16 +107,11 @@ Your job is to ask clarifying questions to narrow the scope. Rules:
 - When you have enough information, respond with exactly: GENERATE_OUTLINE
 - Do NOT generate the outline yourself. Just say GENERATE_OUTLINE.`
 
-const SystemPromptOutline = `You are an AI course designer. Generate a chapter outline for a learning course based on the conversation context.
-
-Return ONLY a JSON array of chapter titles. Each title should be descriptive and actionable.
-Example: ["Setting Up Your Environment", "Understanding Memory Layout", "Implementing the Free List"]
-
-Aim for 6-10 chapters. Start with fundamentals, progress to implementation, end with testing and optimization.`
-
 const SystemPromptGenerateChapter = `You are an AI course author. Generate a single chapter for a learning course.
 
-Return ONLY valid JSON with this structure:
+Return ONLY a raw JSON object. No markdown, no code fences, no backticks, no prose before or after. The first character must be { and the last must be }.
+
+Structure:
 {
   "title": "Chapter Title",
   "sections": [
@@ -139,12 +140,13 @@ RULES:
 - Include 1-2 inline quiz sections mid-chapter
 - The test must have at least 3 questions mixing all three types
 - Code content must be plain text (no HTML escaping needed — the renderer handles that)
-- Return ONLY the JSON object, nothing else`
+- CRITICAL: Return ONLY the JSON object. Nothing else. No markdown formatting.`
 
 const SystemPromptGrade = `You are an AI grader. Grade the student's answer against the rubric.
 
-Return ONLY valid JSON:
-{"score": 85, "feedback": "2-3 sentences explaining the score and what to improve."}
+Return ONLY a raw JSON object. No markdown, no code fences, no backticks. First character must be {, last must be }.
+
+Format: {"score": 85, "feedback": "2-3 sentences explaining the score and what to improve."}
 
 Score from 0-100. Be fair but rigorous.`
 
@@ -154,8 +156,16 @@ Here is the full course context (all chapters). Use it to answer the student's q
 
 Keep answers focused and helpful. If the question is outside the course scope, say so politely.`
 
+const SystemPromptOutline = `You are an AI course designer. Generate a chapter outline for a learning course based on the conversation context.
+
+Return ONLY a raw JSON array of chapter titles. No markdown, no code fences, no backticks, no prose. First character must be [, last must be ].
+
+Example: ["Setting Up Your Environment", "Understanding Memory Layout", "Implementing the Free List"]
+
+Aim for 6-10 chapters. Start with fundamentals, progress to implementation, end with testing and optimization.`
+
 // Model names for OpenRouter.
 const (
-	ModelHaiku  = "anthropic/claude-haiku-4.5"
-	ModelSonnet = "anthropic/claude-sonnet-4-6"
+	ModelHaiku  = "qwen/qwen3.6-27b"
+	ModelSonnet = "qwen/qwen3.6-27b"
 )

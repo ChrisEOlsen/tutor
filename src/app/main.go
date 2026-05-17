@@ -74,10 +74,9 @@ func main() {
 	// Course context chat
 	r.Post("/api/courses/{id}/ask", handlers.CourseAskPOST(database.Read, database.Write, appCache))
 
-	port := os.Getenv("APP_PORT")
-	if port == "" {
-		port = "8080"
-	}
+	// Always listen on 8080 inside the container.
+	// APP_PORT controls the host-side port mapping in docker-compose.yml.
+	const port = "8080"
 	log.Printf("GOVA app listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }

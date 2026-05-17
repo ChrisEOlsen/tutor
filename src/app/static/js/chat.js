@@ -97,6 +97,13 @@ async function loadChat() {
   }
   renderMessages(messages);
 
+  // Auto-start conversation if chat history is empty
+  if (messages.length === 0 && course.title) {
+    chatInput.value = course.title;
+    sendMessage();
+    return;
+  }
+
   // If outline already exists, show it
   if (course.outline && course.outline !== '[]') {
     try {
@@ -191,23 +198,78 @@ async function generateCourse() {
   const btn = document.getElementById('generate-course-btn');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Generating Course...';
+    btn.textContent = 'Generating...';
   }
 
-  const res = await post(`/api/courses/${courseId}/generate_all`, {});
+  // Fetch latest course to get outline
+  const res = await get(`/api/courses/${courseId}`);
+  if (!res.ok) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate Course'; }
+    return;
+  }
 
-  if (res.ok) {
-    window.location.href = `/static/pages/study.html?id=${courseId}&chapter=0`;
-  } else {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Generate Course';
+  let outline = [];
+  try { outline = JSON.parse(res.data.outline || '[]'); } catch (e) {}
+
+  if (outline.length === 0) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate Course'; }
+    return;
+  }
+
+  // Build progress timeline
+  const progressContainer = document.createElement('div');
+  progressContainer.id = 'progress-timeline';
+  progressContainer.className = 'space-y-2 mt-4';
+
+  const progressBarOuter = document.createElement('div');
+  progressBarOuter.className = 'w-full bg-white/10 rounded-full h-1.5';
+  const progressBarInner = document.createElement('div');
+  progressBarInner.id = 'progress-bar';
+  progressBarInner.className = 'bg-blue-500 h-1.5 rounded-full transition-all duration-500';
+  progressBarInner.style.width = '0%';
+  progressBarOuter.appendChild(progressBarInner);
+
+  const progressLabel = document.createElement('p');
+  progressLabel.id = 'progress-label';
+  progressLabel.className = 'text-xs text-slate-400 mt-2';
+  progressLabel.textContent = `Generating chapter 0/${outline.length}...`;
+
+  progressContainer.append(progressBarOuter, progressLabel);
+  outlineSection.appendChild(progressContainer);
+
+  // Generate chapters one at a time
+  for (let i = 0; i < outline.length; i++) {
+    progressLabel.textContent = `Generating chapter ${i + 1}/${outline.length}...`;
+    progressBarInner.style.width = `${(i / outline.length) * 100}%`;
+
+    const chapterRes = await post(`/api/courses/${courseId}/generate_chapter/${i}`, {});
+
+    if (!chapterRes.ok) {
+      progressLabel.textContent = `Failed on chapter ${i + 1}`;
+      progressLabel.className = 'text-xs text-red-400 mt-2';
+      if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+      return;
     }
-    const errEl = document.createElement('p');
-    errEl.className = 'text-sm text-red-400 mt-2';
-    errEl.textContent = res.error || 'Failed to generate course.';
-    outlineSection.appendChild(errEl);
+
+    // Add completed item to timeline
+    const item = document.createElement('div');
+    item.className = 'flex items-center gap-2 text-sm text-emerald-400';
+    const check = document.createElement('span');
+    check.textContent = '✓';
+    const title = document.createElement('span');
+    title.textContent = outline[i];
+    item.append(check, title);
+    progressContainer.insertBefore(item, progressContainer.firstChild);
   }
+
+  // Done
+  progressBarInner.style.width = '100%';
+  progressLabel.textContent = 'Course generated! Redirecting...';
+  progressLabel.className = 'text-xs text-emerald-400 mt-2';
+
+  setTimeout(() => {
+    window.location.href = `/static/pages/study.html?id=${courseId}&chapter=0`;
+  }, 800);
 }
 
 chatForm.addEventListener('submit', (e) => {
