@@ -166,6 +166,6 @@ Aim for 6-10 chapters. Start with fundamentals, progress to implementation, end 
 
 // Model names for OpenRouter.
 const (
-	ModelHaiku  = "qwen/qwen3.6-27b"
-	ModelSonnet = "qwen/qwen3.6-27b"
+	ModelHaiku  = "anthropic/claude-haiku-4.5"
+	ModelSonnet = "anthropic/claude-sonnet-4-6"
 )
