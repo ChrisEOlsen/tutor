@@ -3,20 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tutor — Dashboard</title>
+  <title>New Course — Tutor</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="bg-gradient-to-b from-[#0a0f1e] to-[#0d1323] text-white min-h-screen flex flex-col">
   <nav class="border-b border-white/10 px-6 py-4 flex items-center justify-between">
     <a href="/" class="font-semibold text-lg tracking-tight text-white">Tutor</a>
-    <a href="/static/pages/new_course.html" class="text-sm bg-white/10 hover:bg-white/20 transition-colors px-4 py-2 rounded-lg text-white">New Course</a>
+    <a href="/" class="text-sm text-slate-400 hover:text-white transition-colors">Dashboard</a>
   </nav>
-  <main class="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
-    <div id="app">Loading...</div>
+  <main class="flex-1 px-6 py-8 max-w-2xl mx-auto w-full">
+    <div class="space-y-6">
+      <h1 class="text-2xl font-semibold tracking-tight text-white">Create a New Course</h1>
+      <div id="forms-container" class="space-y-4"></div>
+    </div>
   </main>
   <footer class="border-t border-white/10 px-6 py-4 text-xs text-slate-500">
     AI-Powered Learning
   </footer>
-  <script type="module" src="/static/js/home.js"></script>
+  <script type="module" src="/static/js/new_course.js"></script>
 </body>
 </html>

@@ -32,7 +32,6 @@ func main() {
 	defer database.Close()
 
 	appCache := cache.New()
-	_ = appCache
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.Logger)
@@ -46,13 +45,34 @@ func main() {
 
 	// Pages
 	r.Get("/", handlers.HomeGET())
+	r.Get("/static/pages/new_course.html", handlers.NewCourseGET())
+	r.Get("/static/pages/chat.html", handlers.ChatGET())
+	r.Get("/static/pages/study.html", handlers.StudyGET())
 
-	// Generated API routes registered here by MCP tools
-	// Use database.Read for GET handlers, database.Write for POST handlers
-	// Example:
-	//   r.Post("/api/auth/login",  handlers.LoginPOST(database.Read, database.Write, appCache))
-	//   r.Post("/api/auth/logout", handlers.LogoutPOST())
-	//   r.Get("/api/auth/me",      handlers.MeGET(database.Read, database.Write, appCache))
+	// Course CRUD
+	r.Get("/api/courses", handlers.CoursesListGET(database.Read, database.Write, appCache))
+	r.Post("/api/courses", handlers.CoursesCreatePOST(database.Read, database.Write, appCache))
+	r.Get("/api/courses/{id}", handlers.CourseDetailGET(database.Read, database.Write, appCache))
+	r.Delete("/api/courses/{id}", handlers.CoursesDeleteDELETE(database.Read, database.Write, appCache))
+
+	// Chat flow
+	r.Post("/api/courses/{id}/chat", handlers.CourseChatPOST(database.Read, database.Write, appCache))
+	r.Post("/api/courses/{id}/generate_outline", handlers.CourseGenerateOutlinePOST(database.Read, database.Write, appCache))
+
+	// Course generation
+	r.Post("/api/courses/{id}/generate_all", handlers.CourseGenerateAllPOST(database.Read, database.Write, appCache))
+	r.Post("/api/courses/{id}/generate_chapter/{index}", handlers.CourseGenerateChapterPOST(database.Read, database.Write, appCache))
+	r.Post("/api/courses/{id}/regenerate_chapter/{index}", handlers.CourseRegenerateChapterPOST(database.Read, database.Write, appCache))
+
+	// Study
+	r.Get("/api/courses/{id}/chapter/{index}", handlers.CourseChapterGET(database.Read, database.Write, appCache))
+	r.Post("/api/courses/{id}/progress", handlers.CourseProgressPOST(database.Read, database.Write, appCache))
+
+	// Testing
+	r.Post("/api/courses/{id}/test/{index}", handlers.CourseTestPOST(database.Read, database.Write, appCache))
+
+	// Course context chat
+	r.Post("/api/courses/{id}/ask", handlers.CourseAskPOST(database.Read, database.Write, appCache))
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

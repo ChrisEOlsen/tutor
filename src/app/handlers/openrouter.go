@@ -1,0 +1,161 @@
+package handlers
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"time"
+)
+
+// Message represents a chat message for the OpenRouter API.
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// OpenRouterRequest is the request body for OpenRouter's chat completions.
+type OpenRouterRequest struct {
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Temperature float64   `json:"temperature"`
+}
+
+// OpenRouterChoice represents a choice in the response.
+type OpenRouterChoice struct {
+	Message Message `json:"message"`
+}
+
+// OpenRouterResponse is the top-level response from OpenRouter.
+type OpenRouterResponse struct {
+	Choices []OpenRouterChoice `json:"choices"`
+}
+
+// OpenRouterClient wraps the OpenRouter API.
+type OpenRouterClient struct {
+	apiKey string
+	client *http.Client
+}
+
+// NewOpenRouterClient creates a new client from the OPENROUTER_API_KEY env var.
+func NewOpenRouterClient() *OpenRouterClient {
+	return &OpenRouterClient{
+		apiKey: os.Getenv("OPENROUTER_API_KEY"),
+		client: &http.Client{Timeout: 180 * time.Second},
+	}
+}
+
+// Chat sends a request to OpenRouter and returns the AI response text.
+func (c *OpenRouterClient) Chat(model string, messages []Message, temperature float64) (string, error) {
+	reqBody := OpenRouterRequest{
+		Model:       model,
+		Messages:    messages,
+		Temperature: temperature,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("openrouter error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result OpenRouterResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("no choices in response")
+	}
+
+	return result.Choices[0].Message.Content, nil
+}
+
+// System prompts for different AI tasks.
+
+const SystemPromptClarify = `You are an AI tutor helping a student design a custom learning course. The student has described what they want to build.
+
+Your job is to ask clarifying questions to narrow the scope. Rules:
+- Ask AT MOST 3 questions total, ONE per message.
+- Reject vague topics like "teach me cybersecurity" — require a concrete deliverable (e.g., "build a packet sniffer in Python").
+- Focus on: target language, prior knowledge level, specific end goal.
+- When you have enough information, respond with exactly: GENERATE_OUTLINE
+- Do NOT generate the outline yourself. Just say GENERATE_OUTLINE.`
+
+const SystemPromptOutline = `You are an AI course designer. Generate a chapter outline for a learning course based on the conversation context.
+
+Return ONLY a JSON array of chapter titles. Each title should be descriptive and actionable.
+Example: ["Setting Up Your Environment", "Understanding Memory Layout", "Implementing the Free List"]
+
+Aim for 6-10 chapters. Start with fundamentals, progress to implementation, end with testing and optimization.`
+
+const SystemPromptGenerateChapter = `You are an AI course author. Generate a single chapter for a learning course.
+
+Return ONLY valid JSON with this structure:
+{
+  "title": "Chapter Title",
+  "sections": [
+    {"type": "text", "heading": "Subheading", "content": "prose explanation"},
+    {"type": "code-block", "language": "c", "content": "code here"},
+    {"type": "step-list", "steps": [{"title": "Step title", "body": "Step body"}]},
+    {"type": "callout", "variant": "info|warning|tip", "content": "callout text"},
+    {"type": "concept-card", "term": "term", "definition": "definition", "example": "example"},
+    {"type": "comparison-table", "columns": ["A", "B"], "rows": [["A1","B1"],["A2","B2"]]},
+    {"type": "key-value-grid", "pairs": [["key","value"]]},
+    {"type": "resource-links", "links": [{"title": "link title", "url": "https://...", "description": "one line"}]},
+    {"type": "quiz", "question": "question?", "options": ["A","B","C","D"], "correct": 0}
+  ],
+  "test": {
+    "questions": [
+      {"type": "multiple_choice", "question": "...", "options": ["A","B","C","D"], "correct": 0},
+      {"type": "written", "question": "...", "rubric": "grading criteria"},
+      {"type": "code", "question": "...", "rubric": "grading criteria", "language": "c"}
+    ]
+  }
+}
+
+RULES:
+- Use multiple section types for visual variety (text, code-block, callout, concept-card, etc.)
+- Include at least one resource-links section at the end
+- Include 1-2 inline quiz sections mid-chapter
+- The test must have at least 3 questions mixing all three types
+- Code content must be plain text (no HTML escaping needed — the renderer handles that)
+- Return ONLY the JSON object, nothing else`
+
+const SystemPromptGrade = `You are an AI grader. Grade the student's answer against the rubric.
+
+Return ONLY valid JSON:
+{"score": 85, "feedback": "2-3 sentences explaining the score and what to improve."}
+
+Score from 0-100. Be fair but rigorous.`
+
+const SystemPromptAsk = `You are an AI tutor helping a student with their course. The student can ask you questions about the course material.
+
+Here is the full course context (all chapters). Use it to answer the student's question accurately and concisely.
+
+Keep answers focused and helpful. If the question is outside the course scope, say so politely.`
+
+// Model names for OpenRouter.
+const (
+	ModelHaiku  = "anthropic/claude-haiku-4.5"
+	ModelSonnet = "anthropic/claude-sonnet-4-6"
+)

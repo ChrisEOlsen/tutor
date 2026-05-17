@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Study — Tutor</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-[#0d1323] text-[#c9d1d9] min-h-screen flex flex-col">
+  <nav class="border-b border-white/10 px-6 py-3 flex items-center justify-between">
+    <a href="/" class="font-semibold text-base tracking-tight text-white">Tutor</a>
+    <div class="flex items-center gap-4">
+      <button id="ask-btn" class="text-sm text-slate-400 hover:text-white transition-colors">Ask AI</button>
+      <a href="/" class="text-sm text-slate-400 hover:text-white transition-colors">Dashboard</a>
+    </div>
+  </nav>
+  <div class="flex flex-1 overflow-hidden">
+    <aside id="chapter-nav" class="w-56 border-r border-white/10 overflow-y-auto p-4 flex-shrink-0 hidden sm:block"></aside>
+    <div class="flex-1 overflow-y-auto">
+      <div id="chapter-content" class="max-w-3xl mx-auto px-6 py-8"></div>
+      <div id="test-section" class="max-w-3xl mx-auto px-6 py-8 hidden"></div>
+      <div class="max-w-3xl mx-auto px-6 pb-8 flex justify-between">
+        <button id="prev-btn" class="text-sm text-slate-400 hover:text-white transition-colors disabled:opacity-30" disabled>← Previous</button>
+        <button id="next-btn" class="text-sm text-slate-400 hover:text-white transition-colors disabled:opacity-30" disabled>Next →</button>
+      </div>
+    </div>
+  </div>
+  <div id="ask-panel" class="hidden fixed inset-y-0 right-0 w-96 bg-[#0d1323] border-l border-white/10 flex flex-col"></div>
+  <script type="module" src="/static/js/study.js"></script>
+</body>
+</html>
