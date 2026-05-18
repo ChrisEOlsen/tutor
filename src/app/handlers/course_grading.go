@@ -130,10 +130,31 @@ func CourseTestPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.Handler
 
 				var grading map[string]any
 				score := 0
-				feedback := "No feedback available."
-				if err := json.Unmarshal([]byte(response), &grading); err == nil {
+				feedback := "Grading failed: unable to parse AI response."
+				if err := json.Unmarshal([]byte(response), &grading); err != nil {
+					// Fallback: try to extract JSON object from response
+					start := strings.Index(response, "{")
+					end := strings.LastIndex(response, "}")
+					if start >= 0 && end > start {
+						jsonStr := response[start : end+1]
+						if err2 := json.Unmarshal([]byte(jsonStr), &grading); err2 == nil {
+							score = intFromFloat(grading["score"])
+							fb, _ := grading["feedback"].(string)
+							if fb != "" {
+								feedback = fb
+							}
+						} else {
+							feedback = "Grading failed: AI returned invalid JSON. Raw: " + response[:min(len(response), 200)]
+						}
+					} else {
+						feedback = "Grading failed: no JSON found in AI response."
+					}
+				} else {
 					score = intFromFloat(grading["score"])
-					feedback, _ = grading["feedback"].(string)
+					fb, _ := grading["feedback"].(string)
+					if fb != "" {
+						feedback = fb
+					}
 				}
 
 				results = append(results, map[string]any{
@@ -150,15 +171,42 @@ func CourseTestPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.Handler
 			avgScore = totalScore / len(results)
 		}
 
-		// Save test results
+		// Build per-question results with submitted answers
+		type questionResult struct {
+			QuestionIndex int    `json:"questionIndex"`
+			Type          string `json:"type"`
+			Answer        string `json:"answer"`
+			Score         int    `json:"score"`
+			Feedback      string `json:"feedback"`
+		}
+
+		questionResults := make([]questionResult, 0, len(req.Answers))
+		for i, ans := range req.Answers {
+			if i >= len(results) {
+				break
+			}
+			qType, _ := ans["type"].(string)
+			answer, _ := ans["answer"].(string)
+			qr := questionResult{
+				QuestionIndex: intFromFloat(req.Answers[i]["questionIndex"]),
+				Type:          qType,
+				Answer:        answer,
+				Score:         intFromFloat(results[i]["score"]),
+				Feedback:      results[i]["feedback"].(string),
+			}
+			questionResults = append(questionResults, qr)
+		}
+
+		// Save test results with per-question detail
 		var testResultsMap map[string]any
 		json.Unmarshal([]byte(course.TestResults), &testResultsMap)
 		if testResultsMap == nil {
 			testResultsMap = make(map[string]any)
 		}
 		testResultsMap[strconv.Itoa(idx)] = map[string]any{
-			"score":    avgScore,
-			"feedback": "Chapter complete.",
+			"score":     avgScore,
+			"feedback":  "Chapter complete.",
+			"questions": questionResults,
 		}
 		testResultsJSON, _ := json.Marshal(testResultsMap)
 
@@ -173,7 +221,7 @@ func CourseTestPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.Handler
 		}
 
 		if err := cm.Update(id, course.Title, status, course.ChatHistory, course.Outline, course.Chapters, course.CurrentChapter, string(testResultsJSON), finalGrade); err != nil {
-			jsonError(w, "failed to save results", 500)
+			jsonError(w, "save error: "+err.Error(), 500)
 			return
 		}
 
@@ -197,6 +245,9 @@ func intFromFloat(v any) int {
 		return int(val)
 	case int:
 		return val
+	case string:
+		n, _ := strconv.Atoi(val)
+		return n
 	default:
 		return 0
 	}

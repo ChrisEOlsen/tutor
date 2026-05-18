@@ -189,7 +189,14 @@ func CourseGenerateChapterPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) h
 		chapters[idx] = chapter
 
 		chaptersJSON, _ := json.Marshal(chapters)
-		if err := cm.Update(id, course.Title, course.Status, course.ChatHistory, course.Outline, string(chaptersJSON), course.CurrentChapter, course.TestResults, course.FinalGrade); err != nil {
+
+		// Set status to active when the last chapter is generated
+		status := course.Status
+		if idx == len(outline)-1 {
+			status = "active"
+		}
+
+		if err := cm.Update(id, course.Title, status, course.ChatHistory, course.Outline, string(chaptersJSON), course.CurrentChapter, course.TestResults, course.FinalGrade); err != nil {
 			jsonError(w, "failed to save chapter", 500)
 			return
 		}

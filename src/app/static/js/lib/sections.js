@@ -346,37 +346,77 @@ function renderResourceLinks(section) {
 }
 
 function renderQuiz(section) {
-  const div = document.createElement('div');
-  div.className = 'bg-white/5 border border-white/10 rounded-lg p-4 mb-6';
+  const container = document.createElement('div');
+  container.className = 'bg-white/5 border border-white/10 rounded-lg p-4 mb-6';
 
   const q = document.createElement('p');
-  q.className = 'text-sm font-medium text-white mb-3';
+  q.className = 'text-sm font-medium text-white mb-4';
   q.textContent = section.question || '';
 
   const options = section.options || [];
-  const correct = section.correct || 0;
+  const correct = Number(section.correct) || 0;
+  const quizId = section.quizId || Math.random().toString(36).slice(2, 8);
   const ol = document.createElement('ol');
-  ol.className = 'space-y-2';
+  ol.className = 'space-y-2 list-none';
+
+  // Feedback element (hidden until answered)
+  const feedback = document.createElement('div');
+  feedback.className = 'mt-3 pt-3 border-t border-white/5 text-sm hidden';
+  feedback.id = 'quiz-feedback-' + quizId;
 
   options.forEach((opt, i) => {
     const li = document.createElement('li');
-    const label = document.createElement('label');
-    label.className = 'flex items-center gap-2 text-sm text-[#c9d1d9] cursor-pointer hover:text-white transition-colors';
+    li.className = 'flex items-start gap-2 rounded px-2 py-1.5 transition-colors';
+    li.id = 'quiz-li-' + quizId + '-' + i;
 
     const radio = document.createElement('input');
     radio.type = 'radio';
-    radio.name = 'quiz-' + (section.quizId || '');
+    radio.name = 'quiz-' + quizId;
     radio.value = String(i);
-    radio.className = 'accent-blue-500';
+    radio.className = 'mt-1 accent-blue-500 flex-shrink-0';
+    radio.id = 'quiz-opt-' + i + '-' + quizId;
 
-    const span = document.createElement('span');
-    span.textContent = opt;
+    const label = document.createElement('label');
+    label.htmlFor = radio.id;
+    label.className = 'text-sm text-[#c9d1d9] cursor-pointer hover:text-white transition-colors leading-relaxed flex-1';
+    label.textContent = opt;
 
-    label.append(radio, span);
-    li.appendChild(label);
+    radio.addEventListener('change', () => {
+      // Clear previous styling
+      options.forEach((_, j) => {
+        const prevLi = document.getElementById('quiz-li-' + quizId + '-' + j);
+        if (prevLi) prevLi.className = 'flex items-start gap-2 rounded px-2 py-1.5 transition-colors';
+      });
+
+      const isCorrect = i === correct;
+      // Highlight selected option
+      li.className = isCorrect
+        ? 'flex items-start gap-2 rounded px-2 py-1.5 transition-colors bg-emerald-500/10 border border-emerald-500/20'
+        : 'flex items-start gap-2 rounded px-2 py-1.5 transition-colors bg-red-500/10 border border-red-500/20';
+
+      // Always highlight the correct answer too
+      const correctLi = document.getElementById('quiz-li-' + quizId + '-' + correct);
+      if (correctLi && !isCorrect) {
+        correctLi.className = 'flex items-start gap-2 rounded px-2 py-1.5 transition-colors bg-emerald-500/10 border border-emerald-500/20';
+      }
+
+      // Show feedback
+      feedback.className = 'mt-3 pt-3 border-t border-white/5 text-sm';
+      feedback.replaceChildren();
+      const fbText = document.createElement('p');
+      fbText.className = isCorrect ? 'text-emerald-400 font-medium' : 'text-red-400 font-medium';
+      fbText.textContent = isCorrect ? '✓ Correct!' : `✕ Incorrect — the answer is: ${options[correct]}`;
+      feedback.appendChild(fbText);
+
+      // Disable further changes
+      const radios = document.querySelectorAll(`input[name="quiz-${quizId}"]`);
+      radios.forEach(r => r.disabled = true);
+    });
+
+    li.append(radio, label);
     ol.appendChild(li);
   });
 
-  div.append(q, ol);
-  return div;
+  container.append(q, ol, feedback);
+  return container;
 }

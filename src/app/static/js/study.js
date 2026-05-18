@@ -111,7 +111,10 @@ function renderTest(test) {
 
   // Show existing results if available
   const saved = testResults[String(chapterIndex)];
-  if (saved && saved.score !== undefined) {
+  const savedQuestions = saved && saved.questions ? saved.questions : [];
+  const hasResults = savedQuestions.length > 0;
+
+  if (hasResults) {
     const resultDiv = document.createElement('div');
     resultDiv.className = 'bg-white/5 border border-white/10 rounded-lg p-4 mb-4';
     const score = document.createElement('p');
@@ -138,7 +141,14 @@ function renderTest(test) {
     qText.className = 'text-sm font-medium text-white mb-3';
     qText.textContent = q.question;
 
+    // Restore saved answer and result for this question
+    const savedQ = savedQuestions[i];
+    const savedAnswer = savedQ ? savedQ.answer : '';
+    const savedScore = savedQ ? savedQ.score : null;
+    const savedFeedback = savedQ ? savedQ.feedback : '';
+
     if (q.type === 'multiple_choice') {
+      div.append(qNum, qText);
       q.options.forEach((opt, j) => {
         const label = document.createElement('label');
         label.className = 'flex items-center gap-2 text-sm text-[#c9d1d9] cursor-pointer hover:text-white transition-colors mb-1';
@@ -147,10 +157,14 @@ function renderTest(test) {
         radio.name = `test-answer-${i}`;
         radio.value = String(j);
         radio.className = 'accent-blue-500';
+        if (hasResults && String(j) === savedAnswer) {
+          radio.checked = true;
+        }
+        radio.disabled = hasResults;
         const span = document.createElement('span');
         span.textContent = opt;
         label.append(radio, span);
-        div.append(qNum, qText, label);
+        div.appendChild(label);
       });
     } else if (q.type === 'written') {
       const ta = document.createElement('textarea');
@@ -158,6 +172,8 @@ function renderTest(test) {
       ta.rows = 4;
       ta.className = 'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none';
       ta.placeholder = 'Write your answer...';
+      ta.value = savedAnswer;
+      ta.disabled = hasResults;
       div.append(qNum, qText, ta);
     } else if (q.type === 'code') {
       const ta = document.createElement('textarea');
@@ -165,18 +181,37 @@ function renderTest(test) {
       ta.rows = 6;
       ta.className = 'w-full bg-[#161b22] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono resize-none';
       ta.placeholder = 'Write your code...';
+      ta.value = savedAnswer;
+      ta.disabled = hasResults;
       div.append(qNum, qText, ta);
+    }
+
+    // Show per-question result if available
+    if (savedScore !== null) {
+      const resultDiv = document.createElement('div');
+      resultDiv.className = 'mt-3 pt-3 border-t border-white/5';
+      const scoreP = document.createElement('p');
+      scoreP.className = 'text-sm font-medium text-white';
+      scoreP.textContent = `Score: ${savedScore}/100`;
+      const feedbackP = document.createElement('p');
+      feedbackP.className = 'text-sm text-[#c9d1d9] mt-1';
+      feedbackP.textContent = savedFeedback || '';
+      resultDiv.append(scoreP, feedbackP);
+      div.appendChild(resultDiv);
     }
 
     testSection.appendChild(div);
   });
 
-  const submitBtn = document.createElement('button');
-  submitBtn.id = 'submit-test-btn';
-  submitBtn.className = 'w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 mt-4';
-  submitBtn.textContent = 'Submit Test';
-  submitBtn.addEventListener('click', submitTest);
-  testSection.appendChild(submitBtn);
+  // Only show submit button if test hasn't been graded yet
+  if (!hasResults) {
+    const submitBtn = document.createElement('button');
+    submitBtn.id = 'submit-test-btn';
+    submitBtn.className = 'w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 mt-4';
+    submitBtn.textContent = 'Submit Test';
+    submitBtn.addEventListener('click', submitTest);
+    testSection.appendChild(submitBtn);
+  }
 }
 
 async function submitTest() {
@@ -242,6 +277,7 @@ prevBtn.addEventListener('click', () => {
     window.history.replaceState(null, '', `?id=${courseId}&chapter=${chapterIndex}`);
     renderNav();
     renderChapter();
+    window.scrollTo(0, 0);
   }
 });
 
@@ -251,6 +287,7 @@ nextBtn.addEventListener('click', () => {
     window.history.replaceState(null, '', `?id=${courseId}&chapter=${chapterIndex}`);
     renderNav();
     renderChapter();
+    window.scrollTo(0, 0);
   }
 });
 

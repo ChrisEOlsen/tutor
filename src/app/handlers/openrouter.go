@@ -144,11 +144,12 @@ RULES:
 
 const SystemPromptGrade = `You are an AI grader. Grade the student's answer against the rubric.
 
-Return ONLY a raw JSON object. No markdown, no code fences, no backticks. First character must be {, last must be }.
+Return ONLY a raw JSON object. No markdown, no code fences, no backticks, no prose before or after.
+First character must be { and last character must be }.
 
 Format: {"score": 85, "feedback": "2-3 sentences explaining the score and what to improve."}
 
-Score from 0-100. Be fair but rigorous.`
+Score from 0-100. Be fair but rigorous. Feedback must be 2-3 sentences.`
 
 const SystemPromptAsk = `You are an AI tutor helping a student with their course. The student can ask you questions about the course material.
 
