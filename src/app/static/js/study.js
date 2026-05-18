@@ -40,28 +40,94 @@ async function loadCourse() {
 function renderNav() {
   chapterNav.replaceChildren();
 
+  // Progress summary
+  const completedCount = outline.filter((_, i) => testResults[String(i)]).length;
+  const totalCount = outline.length;
+
+  const progressDiv = document.createElement('div');
+  progressDiv.className = 'mb-4';
+
   const h2 = document.createElement('h2');
-  h2.className = 'text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3';
+  h2.className = 'text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2';
   h2.textContent = 'Chapters';
 
+  const progressText = document.createElement('p');
+  progressText.className = 'text-xs text-slate-500';
+  progressText.textContent = `${completedCount}/${totalCount} completed`;
+  progressDiv.append(h2, progressText);
+
+  // Progress bar
+  const progressBar = document.createElement('div');
+  progressBar.className = 'w-full h-1 bg-white/5 rounded-full overflow-hidden mt-2';
+  const progressFill = document.createElement('div');
+  progressFill.className = 'h-full bg-emerald-500/60 rounded-full transition-all';
+  progressFill.style.width = totalCount > 0 ? `${(completedCount / totalCount) * 100}%` : '0%';
+  progressBar.appendChild(progressFill);
+  progressDiv.appendChild(progressBar);
+
   const ul = document.createElement('ul');
-  ul.className = 'space-y-1';
+  ul.className = 'space-y-1 mt-4';
 
   outline.forEach((title, i) => {
     const li = document.createElement('li');
     const a = document.createElement('a');
     a.href = `/static/pages/study.html?id=${courseId}&chapter=${i}`;
-    a.className = `block text-sm px-3 py-2 rounded transition-colors ${
-      i === chapterIndex
-        ? 'bg-white/10 text-white'
-        : 'text-slate-400 hover:text-white hover:bg-white/5'
+
+    const isCompleted = !!testResults[String(i)];
+    const isActive = i === chapterIndex;
+
+    const innerDiv = document.createElement('div');
+    innerDiv.className = 'flex items-center gap-2';
+
+    // Status indicator
+    const indicator = document.createElement('span');
+    indicator.className = 'flex-shrink-0 w-4 h-4 flex items-center justify-center';
+    if (isCompleted) {
+      indicator.className += ' text-emerald-400';
+      indicator.textContent = '✓';
+    } else {
+      indicator.className += ' text-slate-600';
+      indicator.textContent = '○';
+    }
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'block text-sm';
+    textSpan.textContent = `${i + 1}. ${title}`;
+
+    innerDiv.append(indicator, textSpan);
+
+    // Score badge if completed
+    if (isCompleted) {
+      const result = testResults[String(i)];
+      const score = result.score;
+      if (score !== undefined && score !== null) {
+        const badge = document.createElement('span');
+        badge.className = 'flex-shrink-0 text-xs px-1.5 py-0.5 rounded font-medium';
+        if (score >= 70) {
+          badge.className += ' bg-emerald-500/15 text-emerald-400';
+        } else {
+          badge.className += ' bg-amber-500/15 text-amber-400';
+        }
+        badge.textContent = `${score}%`;
+        innerDiv.appendChild(badge);
+      }
+    }
+
+    a.className = `block px-3 py-2 rounded transition-colors ${
+      isActive
+        ? isCompleted
+          ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+          : 'bg-white/10 text-white'
+        : isCompleted
+          ? 'text-emerald-300/80 hover:text-emerald-300 hover:bg-white/5'
+          : 'text-slate-400 hover:text-white hover:bg-white/5'
     }`;
-    a.textContent = `${i + 1}. ${title}`;
+    a.appendChild(innerDiv);
     li.appendChild(a);
     ul.appendChild(li);
   });
 
-  chapterNav.append(h2, ul);
+  chapterNav.append(progressDiv, ul);
 }
 
 function renderChapter() {
@@ -75,6 +141,31 @@ function renderChapter() {
   }
 
   const chapter = chapters[chapterIndex];
+  const saved = testResults[String(chapterIndex)];
+
+  // Completion banner
+  if (saved && saved.score !== undefined) {
+    const banner = document.createElement('div');
+    banner.className = 'rounded-lg px-4 py-3 mb-6 flex items-center gap-3';
+    if (saved.score >= 70) {
+      banner.className += ' bg-emerald-500/10 border border-emerald-500/20';
+    } else {
+      banner.className += ' bg-amber-500/10 border border-amber-500/20';
+    }
+    const bannerIcon = document.createElement('span');
+    bannerIcon.className = 'text-lg';
+    bannerIcon.textContent = saved.score >= 70 ? '✓' : '⚠';
+    const bannerText = document.createElement('div');
+    const bannerTitle = document.createElement('p');
+    bannerTitle.className = 'text-sm font-medium text-white';
+    bannerTitle.textContent = saved.score >= 70 ? 'Chapter Complete' : 'Chapter Test Submitted';
+    const bannerScore = document.createElement('p');
+    bannerScore.className = 'text-xs text-[#c9d1d9] mt-0.5';
+    bannerScore.textContent = `Score: ${saved.score}/100${saved.feedback ? ' — ' + saved.feedback : ''}`;
+    bannerText.append(bannerTitle, bannerScore);
+    banner.append(bannerIcon, bannerText);
+    chapterContent.appendChild(banner);
+  }
 
   // Chapter title
   const h1 = document.createElement('h1');
