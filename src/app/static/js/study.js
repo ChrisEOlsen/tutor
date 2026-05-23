@@ -167,11 +167,27 @@ function renderChapter() {
     chapterContent.appendChild(banner);
   }
 
-  // Chapter title
+  // Chapter title + regenerate button
+  const titleRow = document.createElement('div');
+  titleRow.className = 'flex items-center justify-between mb-6 gap-4';
+
   const h1 = document.createElement('h1');
-  h1.className = 'text-xl font-semibold text-white mb-6';
+  h1.className = 'text-xl font-semibold text-white';
   h1.textContent = chapter.title || outline[chapterIndex] || `Chapter ${chapterIndex + 1}`;
-  chapterContent.appendChild(h1);
+
+  const regenBtn = document.createElement('button');
+  regenBtn.id = 'regen-btn';
+  regenBtn.className = 'text-xs text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white/5';
+  const regenIcon = document.createElement('span');
+  regenIcon.textContent = '↻';
+  regenIcon.className = 'text-sm';
+  const regenLabel = document.createElement('span');
+  regenLabel.textContent = 'Regenerate';
+  regenBtn.append(regenIcon, regenLabel);
+  regenBtn.addEventListener('click', showRegenerateModal);
+
+  titleRow.append(h1, regenBtn);
+  chapterContent.appendChild(titleRow);
 
   // Sections
   const sections = chapter.sections || [];
@@ -443,6 +459,91 @@ function initAskPanel() {
   });
 
   askPanel.append(header, messages, form);
+}
+
+// ── Regenerate Chapter ──────────────────────────────────────────────
+let regenModal = null;
+
+function showRegenerateModal() {
+  if (regenModal) return; // already open
+
+  regenModal = document.createElement('div');
+  regenModal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm';
+
+  const card = document.createElement('div');
+  card.className = 'bg-[#0d1323] border border-white/10 rounded-xl p-6 w-full max-w-md mx-4 shadow-xl';
+
+  const h2 = document.createElement('h2');
+  h2.className = 'text-base font-semibold text-white mb-1';
+  h2.textContent = 'Regenerate Chapter';
+
+  const desc = document.createElement('p');
+  desc.className = 'text-sm text-slate-400 mb-4';
+  desc.textContent = 'Ask AI to rewrite this chapter. Optionally describe what to fix or change.';
+
+  const textarea = document.createElement('textarea');
+  textarea.id = 'regen-prompt';
+  textarea.rows = 3;
+  textarea.className = 'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none mb-4';
+  textarea.placeholder = 'e.g., Go deeper into the examples, simplify the explanation...';
+
+  const btnRow = document.createElement('div');
+  btnRow.className = 'flex justify-end gap-2';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'px-3 py-2 text-sm text-slate-400 hover:text-white transition-colors rounded hover:bg-white/5';
+  cancelBtn.textContent = 'Cancel';
+
+  const submitBtn = document.createElement('button');
+  submitBtn.id = 'regen-submit';
+  submitBtn.className = 'px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50';
+  submitBtn.textContent = 'Regenerate';
+
+  btnRow.append(cancelBtn, submitBtn);
+  card.append(h2, desc, textarea, btnRow);
+  regenModal.appendChild(card);
+  document.body.appendChild(regenModal);
+  textarea.focus();
+
+  const close = () => {
+    regenModal.remove();
+    regenModal = null;
+  };
+
+  cancelBtn.addEventListener('click', close);
+  regenModal.addEventListener('click', (e) => { if (e.target === regenModal) close(); });
+
+  const doRegenerate = async () => {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Generating...';
+    textarea.disabled = true;
+    cancelBtn.disabled = true;
+
+    const prompt = textarea.value.trim();
+    const res = await post(`/api/courses/${courseId}/regenerate_chapter/${chapterIndex}`, { prompt });
+
+    if (res.ok && res.data) {
+      chapters[chapterIndex] = res.data.chapter;
+      close();
+      renderChapter();
+      renderNav();
+    } else {
+      close();
+      const errBtn = document.getElementById('regen-btn');
+      if (errBtn) {
+        const errSpan = document.createElement('span');
+        errSpan.className = 'text-xs text-red-400 ml-2';
+        errSpan.textContent = res.error || 'Failed to regenerate.';
+        errBtn.appendChild(errSpan);
+        setTimeout(() => errSpan.remove(), 5000);
+      }
+    }
+  };
+
+  submitBtn.addEventListener('click', doRegenerate);
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) doRegenerate();
+  });
 }
 
 if (courseId) loadCourse();
