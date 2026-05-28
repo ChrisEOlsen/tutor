@@ -29,7 +29,7 @@ func CoursesCreatePOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.Hand
 		}
 
 		// Generate a concise title from the user's description
-		title, err := client.Chat(ModelHaiku, []Message{
+		title, err := client.Chat(ModelDefault, []Message{
 			{Role: "system", Content: "Generate a short, descriptive title (max 60 characters) for a learning course based on the user's description. Return ONLY the title string, no quotes, no explanation."},
 			{Role: "user", Content: req.Title},
 		}, 0.3)

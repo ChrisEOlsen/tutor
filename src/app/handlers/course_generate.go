@@ -61,7 +61,7 @@ func CourseGenerateAllPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.
 				{Role: "user", Content: prompt},
 			}
 
-			response, err := client.Chat(ModelHaiku, apiMessages, 0.7)
+			response, err := client.Chat(ModelDefault, apiMessages, 0.7)
 			if err != nil {
 				jsonError(w, fmt.Sprintf("AI error on chapter %d: %v", i+1, err), 500)
 				return
@@ -149,7 +149,7 @@ func CourseGenerateChapterPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) h
 			{Role: "user", Content: prompt},
 		}
 
-		response, err := client.Chat(ModelHaiku, apiMessages, 0.7)
+		response, err := client.Chat(ModelDefault, apiMessages, 0.7)
 		if err != nil {
 			jsonError(w, "AI error: "+err.Error(), 500)
 			return

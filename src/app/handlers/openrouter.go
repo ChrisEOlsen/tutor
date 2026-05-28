@@ -49,7 +49,7 @@ type OpenRouterClient struct {
 func NewOpenRouterClient() *OpenRouterClient {
 	return &OpenRouterClient{
 		apiKey: os.Getenv("OPENROUTER_API_KEY"),
-		client: &http.Client{Timeout: 180 * time.Second},
+		client: &http.Client{Timeout: 600 * time.Second},
 	}
 }
 
@@ -59,6 +59,7 @@ func (c *OpenRouterClient) Chat(model string, messages []Message, temperature fl
 		Model:       model,
 		Messages:    messages,
 		Temperature: temperature,
+		Provider:    OpenRouterProvider{Only: []string{"alibaba"}},
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -93,7 +94,12 @@ func (c *OpenRouterClient) Chat(model string, messages []Message, temperature fl
 		return "", fmt.Errorf("no choices in response")
 	}
 
-	return result.Choices[0].Message.Content, nil
+	content := result.Choices[0].Message.Content
+	if content == "" {
+		return "", fmt.Errorf("empty content from model %s", model)
+	}
+
+	return content, nil
 }
 
 // System prompts for different AI tasks.
@@ -167,6 +173,5 @@ Aim for 6-10 chapters. Start with fundamentals, progress to implementation, end 
 
 // Model names for OpenRouter.
 const (
-	ModelHaiku  = "anthropic/claude-haiku-4.5"
-	ModelSonnet = "anthropic/claude-sonnet-4-6"
+	ModelDefault = "deepseek/deepseek-v4-pro"
 )

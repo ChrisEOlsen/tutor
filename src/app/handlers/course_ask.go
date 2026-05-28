@@ -66,7 +66,7 @@ func CourseAskPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.HandlerF
 			{Role: "user", Content: req.Question},
 		}
 
-		response, err := client.Chat(ModelSonnet, apiMessages, 0.7)
+		response, err := client.Chat(ModelDefault, apiMessages, 0.7)
 		if err != nil {
 			jsonError(w, "AI error: "+err.Error(), 500)
 			return
@@ -122,7 +122,7 @@ func CourseRegenerateChapterPOST(readDB, writeDB *sql.DB, appCache *cache.Cache)
 			{Role: "user", Content: prompt},
 		}
 
-		response, err := client.Chat(ModelHaiku, apiMessages, 0.7)
+		response, err := client.Chat(ModelDefault, apiMessages, 0.7)
 		if err != nil {
 			jsonError(w, "AI error: "+err.Error(), 500)
 			return

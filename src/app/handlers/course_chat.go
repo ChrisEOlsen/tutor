@@ -61,7 +61,7 @@ func CourseChatPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.Handler
 		apiMessages := []Message{{Role: "system", Content: SystemPromptClarify}}
 		apiMessages = append(apiMessages, messages...)
 
-		response, err := client.Chat(ModelSonnet, apiMessages, 0.7)
+		response, err := client.Chat(ModelDefault, apiMessages, 0.7)
 		if err != nil {
 			jsonError(w, "AI error: "+err.Error(), 500)
 			return
@@ -106,7 +106,7 @@ func CourseGenerateOutlinePOST(readDB, writeDB *sql.DB, appCache *cache.Cache) h
 		apiMessages := []Message{{Role: "system", Content: SystemPromptOutline}}
 		apiMessages = append(apiMessages, messages...)
 
-		response, err := client.Chat(ModelHaiku, apiMessages, 0.7)
+		response, err := client.Chat(ModelDefault, apiMessages, 0.7)
 		if err != nil {
 			jsonError(w, "AI error: "+err.Error(), 500)
 			return
