@@ -44,22 +44,67 @@ function courseLink(course) {
   return a;
 }
 
-function deleteButton(courseId) {
-  const btn = document.createElement('button');
-  btn.className = 'text-xs text-red-400 hover:text-red-300 transition-colors ml-3';
-  btn.textContent = 'Delete';
-  btn.addEventListener('click', async () => {
+function menuButton(courseId) {
+  const wrap = document.createElement('div');
+  wrap.className = 'relative';
+
+  const trigger = document.createElement('button');
+  trigger.className = 'w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors text-base leading-none';
+  trigger.textContent = '⋯';
+  trigger.setAttribute('aria-label', 'Course options');
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'absolute right-0 top-8 bg-[#0d1323] border border-white/10 rounded-lg shadow-xl z-10 min-w-[120px] hidden';
+
+  const deleteItem = document.createElement('button');
+  deleteItem.className = 'w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-white/5 hover:text-red-300 transition-colors rounded-lg';
+  deleteItem.textContent = 'Delete';
+  deleteItem.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    dropdown.classList.add('hidden');
     if (!confirm('Delete this course? This cannot be undone.')) return;
     const res = await del(`/api/courses/${courseId}`);
     if (res.ok) loadCourses();
   });
-  return btn;
+
+  dropdown.appendChild(deleteItem);
+  wrap.append(trigger, dropdown);
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = dropdown.classList.contains('hidden');
+    document.querySelectorAll('.course-dropdown').forEach(d => d.classList.add('hidden'));
+    if (isHidden) dropdown.classList.remove('hidden');
+  });
+
+  dropdown.classList.add('course-dropdown');
+
+  return wrap;
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.course-dropdown').forEach(d => d.classList.add('hidden'));
+});
+
+function chapterProgress(course) {
+  if (course.status !== 'active' && course.status !== 'completed') return null;
+  let outline = [];
+  let testResults = {};
+  try { outline = JSON.parse(course.outline || '[]'); } catch (e) {}
+  try { testResults = JSON.parse(course.test_results || '{}'); } catch (e) {}
+
+  const total = outline.length;
+  if (total === 0) return null;
+
+  const done = outline.filter((_, i) => !!testResults[String(i)]).length;
+  return { done, total };
 }
 
 function courseCard(course) {
   const div = document.createElement('div');
-  div.className = 'bg-white/5 border border-white/10 rounded-lg p-4 hover:bg-white/10 transition-colors';
+  div.className = 'bg-white/5 border border-white/10 rounded-lg p-4 hover:bg-white/10 transition-colors flex flex-col gap-3';
 
+  // Header row: title + badge + delete
   const header = document.createElement('div');
   header.className = 'flex items-start justify-between gap-3';
 
@@ -69,12 +114,36 @@ function courseCard(course) {
 
   const actions = document.createElement('div');
   actions.className = 'flex items-center gap-2 flex-shrink-0';
-  actions.append(statusBadge(course.status), deleteButton(course.id));
+  if (course.status !== 'active') actions.appendChild(statusBadge(course.status));
+  actions.appendChild(menuButton(course.id));
 
   header.append(title, actions);
+  div.appendChild(header);
 
-  const link = courseLink(course);
-  div.append(header, link);
+  // Chapter progress (only for courses that have an outline)
+  const progress = chapterProgress(course);
+  if (progress) {
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'space-y-1';
+
+    const bar = document.createElement('div');
+    bar.className = 'w-full bg-white/10 rounded-full h-1';
+    const fill = document.createElement('div');
+    const pct = progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
+    fill.className = 'h-1 rounded-full transition-all duration-500 bg-emerald-500';
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+
+    const label = document.createElement('p');
+    label.className = 'text-xs text-slate-400';
+    label.textContent = `${progress.done} / ${progress.total} chapters completed`;
+
+    progressWrap.append(bar, label);
+    div.appendChild(progressWrap);
+  }
+
+  // Footer: action link
+  div.appendChild(courseLink(course));
 
   return div;
 }
