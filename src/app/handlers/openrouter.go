@@ -59,7 +59,7 @@ func (c *OpenRouterClient) Chat(model string, messages []Message, temperature fl
 		Model:       model,
 		Messages:    messages,
 		Temperature: temperature,
-		Provider:    OpenRouterProvider{Only: []string{"alibaba"}},
+		Provider:    OpenRouterProvider{Only: []string{"anthropic"}},
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -104,16 +104,16 @@ func (c *OpenRouterClient) Chat(model string, messages []Message, temperature fl
 
 // System prompts for different AI tasks.
 
-const SystemPromptClarify = `You are an AI tutor helping a student design a custom learning course. The student has described what they want to build.
+const SystemPromptClarify = `You are an AI tutor helping a student design a custom learning course on any topic. The student has described what they want to learn.
 
 Your job is to ask clarifying questions to narrow the scope. Rules:
 - Ask AT MOST 3 questions total, ONE per message.
-- Reject vague topics like "teach me cybersecurity" — require a concrete deliverable (e.g., "build a packet sniffer in Python").
-- Focus on: target language, prior knowledge level, specific end goal.
+- Reject vague topics like "teach me history" — require a concrete focus (e.g., "the causes of the French Revolution" or "how to bake sourdough bread").
+- Focus on: the student's prior knowledge level, the specific topic or skill, and the desired outcome.
 - When you have enough information, respond with exactly: GENERATE_OUTLINE
 - Do NOT generate the outline yourself. Just say GENERATE_OUTLINE.`
 
-const SystemPromptGenerateChapter = `You are an AI course author. Generate a single chapter for a learning course.
+const SystemPromptGenerateChapter = `You are an AI course author. Generate a single chapter for a learning course on any topic.
 
 Return ONLY a raw JSON object. No markdown, no code fences, no backticks, no prose before or after. The first character must be { and the last must be }.
 
@@ -141,11 +141,12 @@ Structure:
 }
 
 RULES:
-- Use multiple section types for visual variety (text, code-block, callout, concept-card, etc.)
+- Use multiple section types for visual variety (text, callout, concept-card, step-list, comparison-table, etc.)
+- Adapt section types to the course topic — use code-block and code questions for technical subjects, written questions and concept-cards for humanities, step-lists for practical skills
 - Include at least one resource-links section at the end
 - Include 1-2 inline quiz sections mid-chapter
-- The test must have at least 3 questions mixing all three types
-- Code content must be plain text (no HTML escaping needed — the renderer handles that)
+- The test must have at least 3 questions mixing multiple types appropriate to the subject
+- Content must be plain text (no HTML escaping needed — the renderer handles that)
 - CRITICAL: Return ONLY the JSON object. Nothing else. No markdown formatting.`
 
 const SystemPromptGrade = `You are an AI grader. Grade the student's answer against the rubric.
@@ -157,7 +158,7 @@ Format: {"score": 85, "feedback": "2-3 sentences explaining the score and what t
 
 Score from 0-100. Be fair but rigorous. Feedback must be 2-3 sentences.`
 
-const SystemPromptAsk = `You are an AI tutor helping a student with their course. The student can ask you questions about the course material.
+const SystemPromptAsk = `You are an AI tutor helping a student with their course. The student can ask you questions about the course material, request clarification, or ask for additional examples.
 
 Here is the full course context (all chapters). Use it to answer the student's question accurately and concisely.
 
@@ -167,11 +168,12 @@ const SystemPromptOutline = `You are an AI course designer. Generate a chapter o
 
 Return ONLY a raw JSON array of chapter titles. No markdown, no code fences, no backticks, no prose. First character must be [, last must be ].
 
-Example: ["Setting Up Your Environment", "Understanding Memory Layout", "Implementing the Free List"]
+Example: ["Introduction to the Topic", "Core Concepts", "Practical Applications", "Advanced Techniques"]
 
-Aim for 6-10 chapters. Start with fundamentals, progress to implementation, end with testing and optimization.`
+Aim for 6-10 chapters. Start with fundamentals, progress to deeper topics, end with mastery and next steps.`
 
-// Model names for OpenRouter.
+// Model names for OpenRouter (Anthropic via OpenRouter).
 const (
-	ModelDefault = "deepseek/deepseek-v4-pro"
+	ModelPrimary = "anthropic/claude-sonnet-4.6" // Heavy lifting: chapter generation, outline
+	ModelFast    = "anthropic/claude-haiku-4.5"  // Fast responses: chat, ask, grading, title gen
 )

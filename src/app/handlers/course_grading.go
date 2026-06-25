@@ -100,7 +100,7 @@ func CourseTestPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.Handler
 					{Role: "user", Content: prompt},
 				}
 
-				response, err := client.Chat(ModelDefault, apiMessages, 0.3)
+				response, err := client.Chat(ModelFast, apiMessages, 0.3)
 				if err != nil {
 					results = append(results, map[string]any{
 						"questionIndex": qIdx,
