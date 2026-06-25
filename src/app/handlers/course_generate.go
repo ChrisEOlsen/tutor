@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"gova/app/cache"
@@ -62,71 +63,89 @@ func generateCourseBackground(cm *models.CourseModel, courseID int64, courseTitl
 	client := NewOpenRouterClient()
 	chapters := make([]map[string]any, len(outline))
 
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var firstErr string
+	completed := 0
+
 	for i, title := range outline {
-		// Build prompt with context from already-generated chapters
-		var existingChapters []string
-		for _, ch := range chapters[:i] {
-			if ch != nil {
-				if t, ok := ch["title"].(string); ok {
-					existingChapters = append(existingChapters, t)
-				}
+		wg.Add(1)
+		go func(i int, title string) {
+			defer wg.Done()
+
+			prompt := fmt.Sprintf("Generate chapter %d of %d: %s\n\nCourse title: %s\nFull outline: %v",
+				i+1, len(outline), title, courseTitle, outline)
+
+			apiMessages := []Message{
+				{Role: "system", Content: SystemPromptGenerateChapter},
+				{Role: "user", Content: prompt},
 			}
-		}
 
-		prompt := fmt.Sprintf("Generate chapter %d of %d: %s\n\nCourse title: %s\nPrevious chapters: %v",
-			i+1, len(outline), title, courseTitle, existingChapters)
-
-		apiMessages := []Message{
-			{Role: "system", Content: SystemPromptGenerateChapter},
-			{Role: "user", Content: prompt},
-		}
-
-		response, err := client.Chat(ModelPrimary, apiMessages, 0.7)
-		if err != nil {
-			// Save error and stop — status stays "generating" so UI shows failure
-			chaptersJSON, _ := json.Marshal(chapters)
-			_ = cm.UpdateGenerationProgress(courseID, "generating", string(chaptersJSON), int64(i), err.Error())
-			log.Printf("course %d generation failed at chapter %d: %v", courseID, i+1, err)
-			return
-		}
-
-		// Parse JSON from response
-		response = strings.TrimSpace(response)
-		if strings.HasPrefix(response, "```") {
-			lines := strings.Split(response, "\n")
-			var cleaned []string
-			inBlock := false
-			for _, line := range lines {
-				if strings.Contains(line, "```") {
-					inBlock = !inBlock
-					continue
+			response, err := client.Chat(ModelPrimary, apiMessages, 0.7)
+			if err != nil {
+				mu.Lock()
+				if firstErr == "" {
+					firstErr = err.Error()
 				}
-				if inBlock {
-					cleaned = append(cleaned, line)
-				}
+				mu.Unlock()
+				log.Printf("course %d generation failed at chapter %d: %v", courseID, i+1, err)
+				return
 			}
-			response = strings.Join(cleaned, "\n")
-		}
 
-		var chapter map[string]any
-		if err := json.Unmarshal([]byte(response), &chapter); err != nil {
-			chaptersJSON, _ := json.Marshal(chapters)
-			_ = cm.UpdateGenerationProgress(courseID, "generating", string(chaptersJSON), int64(i), "failed to parse chapter "+strconv.Itoa(i+1)+": "+err.Error())
-			log.Printf("course %d parse failed at chapter %d: %v", courseID, i+1, err)
-			return
-		}
+			response = strings.TrimSpace(response)
+			if strings.HasPrefix(response, "```") {
+				lines := strings.Split(response, "\n")
+				var cleaned []string
+				inBlock := false
+				for _, line := range lines {
+					if strings.Contains(line, "```") {
+						inBlock = !inBlock
+						continue
+					}
+					if inBlock {
+						cleaned = append(cleaned, line)
+					}
+				}
+				response = strings.Join(cleaned, "\n")
+			}
 
-		chapters[i] = chapter
+			var chapter map[string]any
+			if err := json.Unmarshal([]byte(response), &chapter); err != nil {
+				mu.Lock()
+				if firstErr == "" {
+					firstErr = "failed to parse chapter " + strconv.Itoa(i+1) + ": " + err.Error()
+				}
+				mu.Unlock()
+				log.Printf("course %d parse failed at chapter %d: %v", courseID, i+1, err)
+				return
+			}
 
-		// Save progress after each chapter
-		chaptersJSON, _ := json.Marshal(chapters)
-		if err := cm.UpdateGenerationProgress(courseID, "generating", string(chaptersJSON), int64(i), ""); err != nil {
-			log.Printf("course %d save progress failed at chapter %d: %v", courseID, i+1, err)
-		}
+			mu.Lock()
+			chapters[i] = chapter
+			completed++
+			snap, _ := json.Marshal(chapters)
+			done := int64(completed)
+			mu.Unlock()
+
+			if err := cm.UpdateGenerationProgress(courseID, "generating", string(snap), done-1, ""); err != nil {
+				log.Printf("course %d save progress failed at chapter %d: %v", courseID, i+1, err)
+			}
+		}(i, title)
 	}
 
-	// All chapters done — mark as active
+	wg.Wait()
+
+	mu.Lock()
+	finalErr := firstErr
 	chaptersJSON, _ := json.Marshal(chapters)
+	mu.Unlock()
+
+	if finalErr != "" {
+		_ = cm.UpdateGenerationProgress(courseID, "generating", string(chaptersJSON), 0, finalErr)
+		log.Printf("course %d generation failed: %v", courseID, finalErr)
+		return
+	}
+
 	if err := cm.UpdateGenerationProgress(courseID, "active", string(chaptersJSON), int64(len(outline)-1), ""); err != nil {
 		log.Printf("course %d finalize failed: %v", courseID, err)
 	}
