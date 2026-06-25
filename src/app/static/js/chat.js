@@ -1,4 +1,5 @@
 import { get, post } from '/static/js/lib/api.js';
+import { renderMarkdown } from '/static/js/lib/markdown.js';
 
 const chatMessages = document.getElementById('chat-messages');
 const chatForm = document.getElementById('chat-form');
@@ -6,6 +7,7 @@ const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const typingIndicator = document.getElementById('typing-indicator');
 const outlineSection = document.getElementById('outline-section');
+const outlinePanel = document.getElementById('outline-panel');
 
 const params = new URLSearchParams(window.location.search);
 const courseId = params.get('id');
@@ -26,14 +28,19 @@ function createMessageBubble(role, content) {
   div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
 
   const bubble = document.createElement('div');
-  bubble.className = `max-w-[80%] rounded-lg px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+  bubble.className = `max-w-[80%] rounded-lg px-4 py-3 text-sm leading-relaxed ${
     role === 'user'
       ? 'bg-blue-600 text-white'
       : 'bg-white/5 text-slate-200 border border-white/10'
   }`;
 
-  // Safe text rendering — never innerHTML
-  bubble.textContent = content;
+  if (role === 'user') {
+    // User messages are plain text — safe textContent
+    bubble.textContent = content;
+  } else {
+    // Assistant messages rendered as markdown — safe DOM nodes, no innerHTML with user data
+    bubble.appendChild(renderMarkdown(content));
+  }
 
   div.appendChild(bubble);
   return div;
@@ -52,7 +59,8 @@ function renderMessages(messages) {
 
 function renderOutline(outline) {
   outlineSection.replaceChildren();
-  outlineSection.classList.remove('hidden');
+  outlinePanel.classList.remove('hidden');
+  outlinePanel.classList.add('flex');
 
   const h2 = document.createElement('h2');
   h2.className = 'text-lg font-semibold text-white mb-3';
@@ -112,10 +120,24 @@ async function loadChat() {
         outlineGenerated = true;
         chatForm.style.display = 'none';
         renderOutline(outline);
-        // If chapters already generated, redirect to study
+
+        // If course is actively generating, show progress and resume polling
+        if (course.status === 'generating') {
+          const genBtn = document.getElementById('generate-course-btn');
+          if (genBtn) {
+            genBtn.disabled = true;
+            genBtn.textContent = 'Generating...';
+          }
+          renderProgressUI(outline);
+          startPolling();
+          return;
+        }
+
+        // If chapters already generated, redirect to study (only if all chapters exist)
         if (course.chapters && course.chapters !== '[]') {
           const chapters = JSON.parse(course.chapters);
-          if (chapters.length > 0) {
+          const allComplete = chapters.length === outline.length && chapters.every(ch => ch !== null);
+          if (allComplete) {
             window.location.href = `/static/pages/study.html?id=${courseId}&chapter=0`;
           }
         }
@@ -194,26 +216,117 @@ async function generateOutline() {
   }
 }
 
+let pollInterval = null;
+
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(pollGenerationStatus, 2500);
+  pollGenerationStatus(); // immediate first poll
+}
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+async function pollGenerationStatus() {
+  const res = await get(`/api/courses/${courseId}/generation_status`);
+  if (!res.ok) return;
+  updateProgressUI(res.data);
+
+  if (res.data.status === 'active') {
+    stopPolling();
+    const progressLabel = document.getElementById('progress-label');
+    if (progressLabel) {
+      progressLabel.textContent = 'Course generated! Redirecting...';
+      progressLabel.className = 'text-xs text-emerald-400 mt-2';
+    }
+    setTimeout(() => {
+      window.location.href = `/static/pages/study.html?id=${courseId}&chapter=0`;
+    }, 800);
+  } else if (res.data.generation_error) {
+    stopPolling();
+    const progressLabel = document.getElementById('progress-label');
+    if (progressLabel) {
+      progressLabel.textContent = `Failed: ${res.data.generation_error}`;
+      progressLabel.className = 'text-xs text-red-400 mt-2';
+    }
+    const btn = document.getElementById('generate-course-btn');
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+}
+
+function renderProgressUI(outline) {
+  // Remove existing progress UI if present
+  const existing = document.getElementById('progress-timeline');
+  if (existing) existing.remove();
+
+  const progressContainer = document.createElement('div');
+  progressContainer.id = 'progress-timeline';
+  progressContainer.className = 'space-y-2 mt-4';
+
+  const progressBarOuter = document.createElement('div');
+  progressBarOuter.className = 'w-full bg-white/10 rounded-full h-1.5';
+  const progressBarInner = document.createElement('div');
+  progressBarInner.id = 'progress-bar';
+  progressBarInner.className = 'bg-blue-500 h-1.5 rounded-full transition-all duration-500';
+  progressBarInner.style.width = '0%';
+  progressBarOuter.appendChild(progressBarInner);
+
+  const progressLabel = document.createElement('p');
+  progressLabel.id = 'progress-label';
+  progressLabel.className = 'text-xs text-slate-400 mt-2';
+  progressLabel.textContent = `Resuming generation progress... (${outline.length} chapters)`;
+
+  progressContainer.append(progressBarOuter, progressLabel);
+  outlineSection.appendChild(progressContainer);
+}
+
+function updateProgressUI(data) {
+  // Ensure progress UI exists
+  let progressBar = document.getElementById('progress-bar');
+  let progressLabel = document.getElementById('progress-label');
+  let progressContainer = document.getElementById('progress-timeline');
+
+  if (!progressBar || !progressLabel || !progressContainer) return;
+
+  const pct = data.total_chapters > 0 ? (data.completed_chapters / data.total_chapters) * 100 : 0;
+  progressBar.style.width = `${pct}%`;
+
+  if (data.generation_error) {
+    progressLabel.textContent = `Failed: ${data.generation_error}`;
+    progressLabel.className = 'text-xs text-red-400 mt-2';
+  } else {
+    progressLabel.textContent = `Generating chapter ${data.completed_chapters + 1}/${data.total_chapters}...`;
+    progressLabel.className = 'text-xs text-slate-400 mt-2';
+  }
+}
+
 async function generateCourse() {
   const btn = document.getElementById('generate-course-btn');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Generating...';
+    btn.textContent = 'Starting...';
   }
 
-  // Fetch latest course to get outline
-  const res = await get(`/api/courses/${courseId}`);
+  // Fire-and-forget: start background generation
+  const res = await post(`/api/courses/${courseId}/generate_all`, {});
   if (!res.ok) {
     if (btn) { btn.disabled = false; btn.textContent = 'Generate Course'; }
     return;
   }
 
+  // Fetch outline for progress UI
+  const courseRes = await get(`/api/courses/${courseId}`);
   let outline = [];
-  try { outline = JSON.parse(res.data.outline || '[]'); } catch (e) {}
+  if (courseRes.ok) {
+    try { outline = JSON.parse(courseRes.data.outline || '[]'); } catch (e) {}
+  }
 
-  if (outline.length === 0) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Generate Course'; }
-    return;
+  if (btn) {
+    btn.textContent = 'Generating...';
   }
 
   // Build progress timeline
@@ -232,44 +345,13 @@ async function generateCourse() {
   const progressLabel = document.createElement('p');
   progressLabel.id = 'progress-label';
   progressLabel.className = 'text-xs text-slate-400 mt-2';
-  progressLabel.textContent = `Generating chapter 0/${outline.length}...`;
+  progressLabel.textContent = `Starting generation...`;
 
   progressContainer.append(progressBarOuter, progressLabel);
   outlineSection.appendChild(progressContainer);
 
-  // Generate chapters one at a time
-  for (let i = 0; i < outline.length; i++) {
-    progressLabel.textContent = `Generating chapter ${i + 1}/${outline.length}...`;
-    progressBarInner.style.width = `${(i / outline.length) * 100}%`;
-
-    const chapterRes = await post(`/api/courses/${courseId}/generate_chapter/${i}`, {});
-
-    if (!chapterRes.ok) {
-      progressLabel.textContent = `Failed on chapter ${i + 1}`;
-      progressLabel.className = 'text-xs text-red-400 mt-2';
-      if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
-      return;
-    }
-
-    // Add completed item to timeline
-    const item = document.createElement('div');
-    item.className = 'flex items-center gap-2 text-sm text-emerald-400';
-    const check = document.createElement('span');
-    check.textContent = '✓';
-    const title = document.createElement('span');
-    title.textContent = outline[i];
-    item.append(check, title);
-    progressContainer.insertBefore(item, progressContainer.firstChild);
-  }
-
-  // Done
-  progressBarInner.style.width = '100%';
-  progressLabel.textContent = 'Course generated! Redirecting...';
-  progressLabel.className = 'text-xs text-emerald-400 mt-2';
-
-  setTimeout(() => {
-    window.location.href = `/static/pages/study.html?id=${courseId}&chapter=0`;
-  }, 800);
+  // Start polling
+  startPolling();
 }
 
 chatForm.addEventListener('submit', (e) => {

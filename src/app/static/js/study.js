@@ -29,6 +29,13 @@ async function loadCourse() {
     return;
   }
   course = res.data;
+
+  // If the course is still generating, send the user back to the chat/progress page
+  if (course.status === 'generating') {
+    window.location.replace(`/static/pages/chat.html?id=${courseId}`);
+    return;
+  }
+
   try { chapters = JSON.parse(course.chapters || '[]'); } catch (e) { chapters = []; }
   try { outline = JSON.parse(course.outline || '[]'); } catch (e) { outline = []; }
   try { testResults = JSON.parse(course.test_results || '{}'); } catch (e) { testResults = {}; }

@@ -54,5 +54,13 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 
+	// Run migrations
+	migrations := []string{
+		"ALTER TABLE courses ADD COLUMN generation_error TEXT DEFAULT ''",
+	}
+	for _, stmt := range migrations {
+		_, _ = writeDB.Exec(stmt) // ignore error (column may already exist from previous run)
+	}
+
 	return &DB{Write: writeDB, Read: readDB}, nil
 }

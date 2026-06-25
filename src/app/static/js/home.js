@@ -31,6 +31,9 @@ function courseLink(course) {
   if (course.status === 'chatting' || course.status === 'outline_ready') {
     a.href = `/static/pages/chat.html?id=${course.id}`;
     a.textContent = course.status === 'chatting' ? 'Continue chat' : 'Review outline';
+  } else if (course.status === 'generating') {
+    a.href = `/static/pages/chat.html?id=${course.id}`;
+    a.textContent = 'View progress';
   } else if (course.status === 'completed') {
     a.href = `/static/pages/study.html?id=${course.id}&chapter=${course.current_chapter}`;
     a.textContent = 'View course';

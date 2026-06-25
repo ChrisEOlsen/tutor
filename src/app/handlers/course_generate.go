@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,7 +16,6 @@ import (
 
 func CourseGenerateAllPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.HandlerFunc {
 	cm := models.NewCourseModel(readDB, writeDB, appCache)
-	client := NewOpenRouterClient()
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
@@ -30,84 +30,146 @@ func CourseGenerateAllPOST(readDB, writeDB *sql.DB, appCache *cache.Cache) http.
 			return
 		}
 
+		if course.Status == "generating" && course.GenerationError == "" {
+			jsonError(w, "generation already in progress", 409)
+			return
+		}
+
 		var outline []string
-		if err := json.Unmarshal([]byte(course.Outline), &outline); err != nil {
+		if err := json.Unmarshal([]byte(course.Outline), &outline); err != nil || len(outline) == 0 {
 			jsonError(w, "no outline found", 400)
 			return
 		}
 
-		// Set status to generating
-		if err := cm.Update(id, course.Title, "generating", course.ChatHistory, course.Outline, "[]", 0, "{}", 0); err != nil {
-			jsonError(w, "failed to update course", 500)
+		// Reset generation state
+		if err := cm.UpdateGenerationProgress(id, "generating", "[]", 0, ""); err != nil {
+			jsonError(w, "failed to start generation", 500)
 			return
 		}
 
-		chapters := make([]map[string]any, 0, len(outline))
+		// Launch background goroutine
+		go func() {
+			generateCourseBackground(cm, id, course.Title, outline)
+		}()
 
-		for i, title := range outline {
-			// Build prompt with context
-			var existingChapters []string
-			for _, ch := range chapters {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "data": map[string]string{"status": "generating", "message": "Course generation started in background"}})
+	}
+}
+
+func generateCourseBackground(cm *models.CourseModel, courseID int64, courseTitle string, outline []string) {
+	client := NewOpenRouterClient()
+	chapters := make([]map[string]any, len(outline))
+
+	for i, title := range outline {
+		// Build prompt with context from already-generated chapters
+		var existingChapters []string
+		for _, ch := range chapters[:i] {
+			if ch != nil {
 				if t, ok := ch["title"].(string); ok {
 					existingChapters = append(existingChapters, t)
 				}
 			}
-
-			prompt := fmt.Sprintf("Generate chapter %d of %d: %s\n\nCourse title: %s\nPrevious chapters: %v",
-				i+1, len(outline), title, course.Title, existingChapters)
-
-			apiMessages := []Message{
-				{Role: "system", Content: SystemPromptGenerateChapter},
-				{Role: "user", Content: prompt},
-			}
-
-			response, err := client.Chat(ModelPrimary, apiMessages, 0.7)
-			if err != nil {
-				jsonError(w, fmt.Sprintf("AI error on chapter %d: %v", i+1, err), 500)
-				return
-			}
-
-			// Parse JSON from response
-			response = strings.TrimSpace(response)
-			if strings.HasPrefix(response, "```") {
-				lines := strings.Split(response, "\n")
-				var cleaned []string
-				inBlock := false
-				for _, line := range lines {
-					if strings.Contains(line, "```") {
-						inBlock = !inBlock
-						continue
-					}
-					if inBlock {
-						cleaned = append(cleaned, line)
-					}
-				}
-				response = strings.Join(cleaned, "\n")
-			}
-
-			var chapter map[string]any
-			if err := json.Unmarshal([]byte(response), &chapter); err != nil {
-				jsonError(w, fmt.Sprintf("failed to parse chapter %d: %v", i+1, err), 500)
-				return
-			}
-
-			chapters = append(chapters, chapter)
-
-			// Save progress after each chapter
-			chaptersJSON, _ := json.Marshal(chapters)
-			if err := cm.Update(id, course.Title, "generating", course.ChatHistory, course.Outline, string(chaptersJSON), int64(i), "{}", 0); err != nil {
-				jsonError(w, "failed to save progress", 500)
-				return
-			}
 		}
 
-		chaptersJSON, _ := json.Marshal(chapters)
-		if err := cm.Update(id, course.Title, "active", course.ChatHistory, course.Outline, string(chaptersJSON), 0, "{}", 0); err != nil {
-			jsonError(w, "failed to finalize course", 500)
+		prompt := fmt.Sprintf("Generate chapter %d of %d: %s\n\nCourse title: %s\nPrevious chapters: %v",
+			i+1, len(outline), title, courseTitle, existingChapters)
+
+		apiMessages := []Message{
+			{Role: "system", Content: SystemPromptGenerateChapter},
+			{Role: "user", Content: prompt},
+		}
+
+		response, err := client.Chat(ModelPrimary, apiMessages, 0.7)
+		if err != nil {
+			// Save error and stop — status stays "generating" so UI shows failure
+			chaptersJSON, _ := json.Marshal(chapters)
+			_ = cm.UpdateGenerationProgress(courseID, "generating", string(chaptersJSON), int64(i), err.Error())
+			log.Printf("course %d generation failed at chapter %d: %v", courseID, i+1, err)
 			return
 		}
 
-		jsonOK(w, map[string]any{"chapters": chapters, "total": len(chapters)})
+		// Parse JSON from response
+		response = strings.TrimSpace(response)
+		if strings.HasPrefix(response, "```") {
+			lines := strings.Split(response, "\n")
+			var cleaned []string
+			inBlock := false
+			for _, line := range lines {
+				if strings.Contains(line, "```") {
+					inBlock = !inBlock
+					continue
+				}
+				if inBlock {
+					cleaned = append(cleaned, line)
+				}
+			}
+			response = strings.Join(cleaned, "\n")
+		}
+
+		var chapter map[string]any
+		if err := json.Unmarshal([]byte(response), &chapter); err != nil {
+			chaptersJSON, _ := json.Marshal(chapters)
+			_ = cm.UpdateGenerationProgress(courseID, "generating", string(chaptersJSON), int64(i), "failed to parse chapter "+strconv.Itoa(i+1)+": "+err.Error())
+			log.Printf("course %d parse failed at chapter %d: %v", courseID, i+1, err)
+			return
+		}
+
+		chapters[i] = chapter
+
+		// Save progress after each chapter
+		chaptersJSON, _ := json.Marshal(chapters)
+		if err := cm.UpdateGenerationProgress(courseID, "generating", string(chaptersJSON), int64(i), ""); err != nil {
+			log.Printf("course %d save progress failed at chapter %d: %v", courseID, i+1, err)
+		}
+	}
+
+	// All chapters done — mark as active
+	chaptersJSON, _ := json.Marshal(chapters)
+	if err := cm.UpdateGenerationProgress(courseID, "active", string(chaptersJSON), int64(len(outline)-1), ""); err != nil {
+		log.Printf("course %d finalize failed: %v", courseID, err)
+	}
+	log.Printf("course %d generation complete (%d chapters)", courseID, len(outline))
+}
+
+func CourseGenerateStatusGET(readDB, writeDB *sql.DB, appCache *cache.Cache) http.HandlerFunc {
+	cm := models.NewCourseModel(readDB, writeDB, appCache)
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			jsonError(w, "invalid course id", 400)
+			return
+		}
+
+		course, err := cm.Find(id)
+		if err != nil {
+			jsonError(w, "course not found", 404)
+			return
+		}
+
+		// Calculate progress
+		var outline []string
+		json.Unmarshal([]byte(course.Outline), &outline)
+		totalChapters := len(outline)
+
+		var chapters []map[string]any
+		json.Unmarshal([]byte(course.Chapters), &chapters)
+		completedChapters := 0
+		for _, ch := range chapters {
+			if ch != nil {
+				completedChapters++
+			}
+		}
+
+		jsonOK(w, map[string]any{
+			"status":            course.Status,
+			"total_chapters":    totalChapters,
+			"completed_chapters": completedChapters,
+			"current_chapter":   course.CurrentChapter,
+			"generation_error":  course.GenerationError,
+		})
 	}
 }
 

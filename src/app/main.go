@@ -61,6 +61,7 @@ func main() {
 
 	// Course generation
 	r.Post("/api/courses/{id}/generate_all", handlers.CourseGenerateAllPOST(database.Read, database.Write, appCache))
+	r.Get("/api/courses/{id}/generation_status", handlers.CourseGenerateStatusGET(database.Read, database.Write, appCache))
 	r.Post("/api/courses/{id}/generate_chapter/{index}", handlers.CourseGenerateChapterPOST(database.Read, database.Write, appCache))
 	r.Post("/api/courses/{id}/regenerate_chapter/{index}", handlers.CourseRegenerateChapterPOST(database.Read, database.Write, appCache))
 
