@@ -103,8 +103,10 @@ func CourseGenerateOutlinePOST(readDB, writeDB *sql.DB, appCache *cache.Cache) h
 			messages = []Message{}
 		}
 
+		// Ensure the conversation ends with a user message (Anthropic requirement)
 		apiMessages := []Message{{Role: "system", Content: SystemPromptOutline}}
 		apiMessages = append(apiMessages, messages...)
+		apiMessages = append(apiMessages, Message{Role: "user", Content: "Generate the course outline based on our conversation."})
 
 		response, err := client.Chat(ModelPrimary, apiMessages, 0.7)
 		if err != nil {

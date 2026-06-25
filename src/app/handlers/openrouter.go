@@ -111,8 +111,8 @@ Your job is to ask clarifying questions to narrow the scope. Rules:
 - Reject vague topics like "teach me history" — require a concrete focus (e.g., "the causes of the French Revolution" or "how to bake sourdough bread").
 - Focus on: the student's prior knowledge level, the specific topic or skill, and the desired outcome.
 - CRITICAL: Before asking any question, check the full conversation history. If the student has already answered a question, NEVER ask it again. Never make the student repeat themselves.
-- When you have enough information, respond with exactly: COURSE OUTLINE READY
-- Do NOT generate the outline yourself. Just say COURSE OUTLINE READY.`
+- When you have enough information, respond with exactly: GENERATE_OUTLINE 
+- Do NOT generate the outline yourself. Just say GENERATE_OUTLINE.`
 
 const SystemPromptGenerateChapter = `You are an AI course author. Generate a single chapter for a learning course on any topic.
 
